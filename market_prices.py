@@ -1,323 +1,272 @@
 """
-Indian Crop Market Price Engine.
-MSP (Minimum Support Price) 2025-26 from Government of India + typical mandi ranges.
+Indian Crop Market Price Engine — LIVE + Fallback.
+Fetches real-time mandi prices from mandibhav.in (Agmarknet data).
+Falls back to embedded MSP 2025-26 + historical averages if live fetch fails.
 Prices in INR per Quintal (100 kg).
 """
 
-# Official MSP 2025-26 + typical wholesale mandi price ranges by crop
-# Sources: CACP recommendations, Agmarknet historical data
-CROP_PRICES = {
-    'Rice': {
-        'msp': 2320,
-        'mandi_min': 1900, 'mandi_max': 3200, 'mandi_avg': 2500,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Punjab': {'avg': 2350, 'trend': 'stable'},
-            'Haryana': {'avg': 2300, 'trend': 'stable'},
-            'Uttar Pradesh': {'avg': 2200, 'trend': 'up'},
-            'West Bengal': {'avg': 2450, 'trend': 'up'},
-            'Andhra Pradesh': {'avg': 2600, 'trend': 'stable'},
-            'Tamil Nadu': {'avg': 2550, 'trend': 'stable'},
-            'Karnataka': {'avg': 2400, 'trend': 'up'},
-            'Maharashtra': {'avg': 2350, 'trend': 'stable'},
-        },
-    },
-    'Wheat': {
-        'msp': 2425,
-        'mandi_min': 2100, 'mandi_max': 3000, 'mandi_avg': 2550,
-        'unit': '₹/Quintal',
-        'season': 'Rabi',
-        'top_states': {
-            'Punjab': {'avg': 2450, 'trend': 'stable'},
-            'Haryana': {'avg': 2400, 'trend': 'stable'},
-            'Madhya Pradesh': {'avg': 2500, 'trend': 'up'},
-            'Uttar Pradesh': {'avg': 2350, 'trend': 'stable'},
-            'Rajasthan': {'avg': 2380, 'trend': 'up'},
-            'Maharashtra': {'avg': 2600, 'trend': 'up'},
-        },
-    },
-    'Maize': {
-        'msp': 2225,
-        'mandi_min': 1600, 'mandi_max': 2800, 'mandi_avg': 2100,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Karnataka': {'avg': 2150, 'trend': 'up'},
-            'Rajasthan': {'avg': 1900, 'trend': 'stable'},
-            'Bihar': {'avg': 2000, 'trend': 'up'},
-            'Madhya Pradesh': {'avg': 2050, 'trend': 'stable'},
-            'Maharashtra': {'avg': 2100, 'trend': 'up'},
-            'Telangana': {'avg': 2200, 'trend': 'up'},
-        },
-    },
-    'Cotton': {
-        'msp': 7121,
-        'mandi_min': 5500, 'mandi_max': 8500, 'mandi_avg': 7000,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Gujarat': {'avg': 7200, 'trend': 'up'},
-            'Maharashtra': {'avg': 6800, 'trend': 'stable'},
-            'Telangana': {'avg': 7000, 'trend': 'up'},
-            'Andhra Pradesh': {'avg': 7100, 'trend': 'stable'},
-            'Rajasthan': {'avg': 6600, 'trend': 'stable'},
-            'Madhya Pradesh': {'avg': 6900, 'trend': 'up'},
-        },
-    },
-    'Banana': {
-        'msp': None,
-        'mandi_min': 800, 'mandi_max': 3500, 'mandi_avg': 1800,
-        'unit': '₹/Quintal',
-        'season': 'Year-round',
-        'top_states': {
-            'Tamil Nadu': {'avg': 1600, 'trend': 'stable'},
-            'Maharashtra': {'avg': 2000, 'trend': 'up'},
-            'Gujarat': {'avg': 1500, 'trend': 'stable'},
-            'Karnataka': {'avg': 1800, 'trend': 'up'},
-            'Kerala': {'avg': 2200, 'trend': 'up'},
-            'Andhra Pradesh': {'avg': 1700, 'trend': 'stable'},
-        },
-    },
-    'Coffee': {
-        'msp': None,
-        'mandi_min': 8000, 'mandi_max': 45000, 'mandi_avg': 25000,
-        'unit': '₹/Quintal',
-        'season': 'Rabi',
-        'top_states': {
-            'Karnataka': {'avg': 28000, 'trend': 'up'},
-            'Kerala': {'avg': 26000, 'trend': 'up'},
-            'Tamil Nadu': {'avg': 24000, 'trend': 'up'},
-        },
-    },
-    'Coconut': {
-        'msp': 2800,
-        'mandi_min': 1500, 'mandi_max': 4000, 'mandi_avg': 2700,
-        'unit': '₹/Quintal',
-        'season': 'Year-round',
-        'top_states': {
-            'Kerala': {'avg': 2800, 'trend': 'stable'},
-            'Karnataka': {'avg': 2600, 'trend': 'stable'},
-            'Tamil Nadu': {'avg': 2500, 'trend': 'up'},
-            'Andhra Pradesh': {'avg': 2400, 'trend': 'stable'},
-        },
-    },
-    'Grapes': {
-        'msp': None,
-        'mandi_min': 2000, 'mandi_max': 12000, 'mandi_avg': 5000,
-        'unit': '₹/Quintal',
-        'season': 'Rabi',
-        'top_states': {
-            'Maharashtra': {'avg': 5500, 'trend': 'up'},
-            'Karnataka': {'avg': 4500, 'trend': 'stable'},
-        },
-    },
-    'Mango': {
-        'msp': None,
-        'mandi_min': 1500, 'mandi_max': 10000, 'mandi_avg': 4000,
-        'unit': '₹/Quintal',
-        'season': 'Zaid',
-        'top_states': {
-            'Uttar Pradesh': {'avg': 3500, 'trend': 'up'},
-            'Andhra Pradesh': {'avg': 4200, 'trend': 'up'},
-            'Maharashtra': {'avg': 4000, 'trend': 'stable'},
-            'Karnataka': {'avg': 3800, 'trend': 'stable'},
-            'Gujarat': {'avg': 5000, 'trend': 'up'},
-        },
-    },
-    'Watermelon': {
-        'msp': None,
-        'mandi_min': 300, 'mandi_max': 2000, 'mandi_avg': 800,
-        'unit': '₹/Quintal',
-        'season': 'Zaid',
-        'top_states': {
-            'Rajasthan': {'avg': 600, 'trend': 'stable'},
-            'Karnataka': {'avg': 900, 'trend': 'up'},
-            'Uttar Pradesh': {'avg': 700, 'trend': 'stable'},
-            'Maharashtra': {'avg': 850, 'trend': 'up'},
-        },
-    },
-    'Muskmelon': {
-        'msp': None,
-        'mandi_min': 500, 'mandi_max': 3000, 'mandi_avg': 1200,
-        'unit': '₹/Quintal',
-        'season': 'Zaid',
-        'top_states': {
-            'Rajasthan': {'avg': 1000, 'trend': 'stable'},
-            'Uttar Pradesh': {'avg': 1100, 'trend': 'up'},
-            'Maharashtra': {'avg': 1300, 'trend': 'up'},
-        },
-    },
-    'Orange': {
-        'msp': None,
-        'mandi_min': 2000, 'mandi_max': 8000, 'mandi_avg': 4000,
-        'unit': '₹/Quintal',
-        'season': 'Rabi',
-        'top_states': {
-            'Maharashtra': {'avg': 4500, 'trend': 'up'},
-            'Madhya Pradesh': {'avg': 3500, 'trend': 'stable'},
-            'Rajasthan': {'avg': 3800, 'trend': 'stable'},
-        },
-    },
-    'Papaya': {
-        'msp': None,
-        'mandi_min': 500, 'mandi_max': 3000, 'mandi_avg': 1500,
-        'unit': '₹/Quintal',
-        'season': 'Year-round',
-        'top_states': {
-            'Gujarat': {'avg': 1400, 'trend': 'stable'},
-            'Andhra Pradesh': {'avg': 1600, 'trend': 'up'},
-            'Karnataka': {'avg': 1300, 'trend': 'stable'},
-            'Maharashtra': {'avg': 1500, 'trend': 'up'},
-        },
-    },
-    'Pomegranate': {
-        'msp': None,
-        'mandi_min': 3000, 'mandi_max': 15000, 'mandi_avg': 7000,
-        'unit': '₹/Quintal',
-        'season': 'Year-round',
-        'top_states': {
-            'Maharashtra': {'avg': 7500, 'trend': 'up'},
-            'Karnataka': {'avg': 6500, 'trend': 'stable'},
-            'Rajasthan': {'avg': 6000, 'trend': 'stable'},
-        },
-    },
-    'Apple': {
-        'msp': None,
-        'mandi_min': 4000, 'mandi_max': 18000, 'mandi_avg': 8000,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {},
-    },
-    'ChickPea': {
-        'msp': 5650,
-        'mandi_min': 4500, 'mandi_max': 7500, 'mandi_avg': 5800,
-        'unit': '₹/Quintal',
-        'season': 'Rabi',
-        'top_states': {
-            'Madhya Pradesh': {'avg': 5600, 'trend': 'stable'},
-            'Rajasthan': {'avg': 5700, 'trend': 'up'},
-            'Maharashtra': {'avg': 5900, 'trend': 'up'},
-            'Karnataka': {'avg': 5500, 'trend': 'stable'},
-            'Uttar Pradesh': {'avg': 5400, 'trend': 'stable'},
-        },
-    },
-    'Lentil': {
-        'msp': 6700,
-        'mandi_min': 5000, 'mandi_max': 8000, 'mandi_avg': 6500,
-        'unit': '₹/Quintal',
-        'season': 'Rabi',
-        'top_states': {
-            'Madhya Pradesh': {'avg': 6400, 'trend': 'stable'},
-            'Uttar Pradesh': {'avg': 6300, 'trend': 'up'},
-            'Bihar': {'avg': 6200, 'trend': 'stable'},
-            'Maharashtra': {'avg': 6600, 'trend': 'up'},
-        },
-    },
-    'KidneyBeans': {
-        'msp': None,
-        'mandi_min': 5000, 'mandi_max': 12000, 'mandi_avg': 8000,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Maharashtra': {'avg': 8500, 'trend': 'up'},
-            'Rajasthan': {'avg': 7500, 'trend': 'stable'},
-        },
-    },
-    'PigeonPeas': {
-        'msp': 7550,
-        'mandi_min': 6000, 'mandi_max': 10000, 'mandi_avg': 7800,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Maharashtra': {'avg': 7600, 'trend': 'stable'},
-            'Karnataka': {'avg': 7900, 'trend': 'up'},
-            'Madhya Pradesh': {'avg': 7400, 'trend': 'stable'},
-        },
-    },
-    'MothBeans': {
-        'msp': 6225,
-        'mandi_min': 5000, 'mandi_max': 9000, 'mandi_avg': 6500,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Rajasthan': {'avg': 6300, 'trend': 'stable'},
-            'Maharashtra': {'avg': 6800, 'trend': 'up'},
-        },
-    },
-    'MungBean': {
-        'msp': 8682,
-        'mandi_min': 6500, 'mandi_max': 11000, 'mandi_avg': 8500,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Rajasthan': {'avg': 8200, 'trend': 'stable'},
-            'Maharashtra': {'avg': 8800, 'trend': 'up'},
-            'Madhya Pradesh': {'avg': 8000, 'trend': 'stable'},
-        },
-    },
-    'Blackgram': {
-        'msp': 7400,
-        'mandi_min': 5500, 'mandi_max': 9500, 'mandi_avg': 7200,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'Madhya Pradesh': {'avg': 7000, 'trend': 'stable'},
-            'Maharashtra': {'avg': 7400, 'trend': 'up'},
-            'Uttar Pradesh': {'avg': 7100, 'trend': 'stable'},
-            'Andhra Pradesh': {'avg': 7300, 'trend': 'up'},
-        },
-    },
-    'Jute': {
-        'msp': 5335,
-        'mandi_min': 4500, 'mandi_max': 7000, 'mandi_avg': 5500,
-        'unit': '₹/Quintal',
-        'season': 'Kharif',
-        'top_states': {
-            'West Bengal': {'avg': 5400, 'trend': 'stable'},
-            'Bihar': {'avg': 5200, 'trend': 'stable'},
-            'Assam': {'avg': 5100, 'trend': 'stable'},
-        },
-    },
+import re
+import time
+import threading
+import subprocess
+
+# ── Crop name → mandibhav.in URL slug mapping ─────────────────────
+CROP_SLUG_MAP = {
+    'Rice': 'rice',
+    'Wheat': 'wheat',
+    'Maize': 'maize',
+    'Cotton': 'cotton',
+    'Banana': 'banana',
+    'Coffee': 'coffee',
+    'Coconut': 'coconut',
+    'Grapes': 'grapes',
+    'Mango': 'mango',
+    'Watermelon': 'water-melon',
+    'Muskmelon': 'karbuja-musk-melon',
+    'Orange': 'orange',
+    'Papaya': 'papaya',
+    'Pomegranate': 'pomegranate',
+    'Apple': 'apple',
+    'ChickPea': 'bengal-gram-gram-whole',
+    'Lentil': 'lentil-masur-whole',
+    'KidneyBeans': 'kidney-beans-rajma',
+    'PigeonPeas': 'arhar-tur-red-gram-whole',
+    'MothBeans': 'moath-dal',
+    'MungBean': 'green-gram-moong-whole',
+    'Blackgram': 'black-gram-urd-beans-whole',
+    'Jute': 'jute',
+}
+
+STATE_SLUG_TO_NAME = {
+    'andhra-pradesh': 'Andhra Pradesh',
+    'arunachal-pradesh': 'Arunachal Pradesh',
+    'assam': 'Assam',
+    'bihar': 'Bihar',
+    'chattisgarh': 'Chattisgarh',
+    'chhattisgarh': 'Chattisgarh',
+    'goa': 'Goa',
+    'gujarat': 'Gujarat',
+    'haryana': 'Haryana',
+    'himachal-pradesh': 'Himachal Pradesh',
+    'jharkhand': 'Jharkhand',
+    'karnataka': 'Karnataka',
+    'kerala': 'Kerala',
+    'madhya-pradesh': 'Madhya Pradesh',
+    'maharashtra': 'Maharashtra',
+    'manipur': 'Manipur',
+    'meghalaya': 'Meghalaya',
+    'mizoram': 'Mizoram',
+    'nagaland': 'Nagaland',
+    'odisha': 'Odisha',
+    'punjab': 'Punjab',
+    'rajasthan': 'Rajasthan',
+    'sikkim': 'Sikkim',
+    'tamil-nadu': 'Tamil Nadu',
+    'telangana': 'Telangana',
+    'tripura': 'Tripura',
+    'uttar-pradesh': 'Uttar Pradesh',
+    'uttarakhand': 'Uttarakhand',
+    'west-bengal': 'West Bengal',
+    'delhi': 'Delhi',
+}
+
+# ── In-memory cache: {crop_slug: {data, timestamp}} ───────────────
+_cache = {}
+_cache_lock = threading.Lock()
+CACHE_TTL = 3600  # 1 hour
+
+
+# ── Official MSP 2025-26 (Government of India, CACP) ──────────────
+MSP_DATA = {
+    'Rice': 2320, 'Wheat': 2425, 'Maize': 2225, 'Cotton': 7121,
+    'Coconut': 2800, 'ChickPea': 5650, 'Lentil': 6700,
+    'PigeonPeas': 7550, 'MothBeans': 6225, 'MungBean': 8682,
+    'Blackgram': 7400, 'Jute': 5335,
+}
+
+# ── Static fallback data (used when live fetch fails) ─────────────
+STATIC_PRICES = {
+    'Rice': {'avg': 2500, 'min': 1900, 'max': 3200, 'season': 'Kharif'},
+    'Wheat': {'avg': 2550, 'min': 2100, 'max': 3000, 'season': 'Rabi'},
+    'Maize': {'avg': 2100, 'min': 1600, 'max': 2800, 'season': 'Kharif'},
+    'Cotton': {'avg': 7000, 'min': 5500, 'max': 8500, 'season': 'Kharif'},
+    'Banana': {'avg': 1800, 'min': 800, 'max': 3500, 'season': 'Year-round'},
+    'Coffee': {'avg': 25000, 'min': 8000, 'max': 45000, 'season': 'Rabi'},
+    'Coconut': {'avg': 2700, 'min': 1500, 'max': 4000, 'season': 'Year-round'},
+    'Grapes': {'avg': 5000, 'min': 2000, 'max': 12000, 'season': 'Rabi'},
+    'Mango': {'avg': 4000, 'min': 1500, 'max': 10000, 'season': 'Zaid'},
+    'Watermelon': {'avg': 800, 'min': 300, 'max': 2000, 'season': 'Zaid'},
+    'Muskmelon': {'avg': 1200, 'min': 500, 'max': 3000, 'season': 'Zaid'},
+    'Orange': {'avg': 4000, 'min': 2000, 'max': 8000, 'season': 'Rabi'},
+    'Papaya': {'avg': 1500, 'min': 500, 'max': 3000, 'season': 'Year-round'},
+    'Pomegranate': {'avg': 7000, 'min': 3000, 'max': 15000, 'season': 'Year-round'},
+    'Apple': {'avg': 8000, 'min': 4000, 'max': 18000, 'season': 'Kharif'},
+    'ChickPea': {'avg': 5800, 'min': 4500, 'max': 7500, 'season': 'Rabi'},
+    'Lentil': {'avg': 6500, 'min': 5000, 'max': 8000, 'season': 'Rabi'},
+    'KidneyBeans': {'avg': 8000, 'min': 5000, 'max': 12000, 'season': 'Kharif'},
+    'PigeonPeas': {'avg': 7800, 'min': 6000, 'max': 10000, 'season': 'Kharif'},
+    'MothBeans': {'avg': 6500, 'min': 5000, 'max': 9000, 'season': 'Kharif'},
+    'MungBean': {'avg': 8500, 'min': 6500, 'max': 11000, 'season': 'Kharif'},
+    'Blackgram': {'avg': 7200, 'min': 5500, 'max': 9500, 'season': 'Kharif'},
+    'Jute': {'avg': 5500, 'min': 4500, 'max': 7000, 'season': 'Kharif'},
 }
 
 
+def _fetch_live_price(crop_name):
+    """Scrape live mandi price from mandibhav.in for a single crop."""
+    slug = CROP_SLUG_MAP.get(crop_name)
+    if not slug:
+        return None
+
+    with _cache_lock:
+        cached = _cache.get(slug)
+        if cached and (time.time() - cached['ts']) < CACHE_TTL:
+            return cached['data']
+
+    url = f'https://mandibhav.in/crop/{slug}'
+    try:
+        proc = subprocess.run(
+            ['curl', '-sL', '--max-time', '6', url],
+            capture_output=True, timeout=8,
+        )
+        if proc.returncode != 0:
+            return None
+        html = proc.stdout.decode('utf-8', errors='ignore')
+        if not html or len(html) < 500:
+            return None
+    except Exception:
+        return None
+
+    result = _parse_price_html(html, crop_name, slug)
+    if result:
+        with _cache_lock:
+            _cache[slug] = {'data': result, 'ts': time.time()}
+    return result
+
+
+def _parse_price_html(html, crop_name, slug):
+    """Extract price data from mandibhav.in crop page HTML."""
+    avg_m = re.search(r'Average Price.*?₹([\d,]+\.?\d*)', html, re.DOTALL)
+    range_m = re.search(r'Price Range.*?₹([\d,]+).*?₹([\d,]+)', html, re.DOTALL)
+    mandis_m = re.search(r'across\s+([\d,]+)\s+mandis', html)
+
+    if not avg_m:
+        return None
+
+    def to_num(s):
+        return float(s.replace(',', ''))
+
+    national_avg = to_num(avg_m.group(1))
+    price_min = to_num(range_m.group(1)) if range_m else national_avg * 0.7
+    price_max = to_num(range_m.group(2)) if range_m else national_avg * 1.5
+    num_mandis = int(mandis_m.group(1).replace(',', '')) if mandis_m else 0
+
+    # 7-day trend from price history table
+    history_prices = re.findall(r'₹([\d,]+\.?\d*)\s*</td>', html)
+    trend = 'stable'
+    if len(history_prices) >= 2:
+        try:
+            recent = to_num(history_prices[-1])
+            older = to_num(history_prices[0])
+            pct = ((recent - older) / older) * 100
+            if pct > 1.5:
+                trend = 'up'
+            elif pct < -1.5:
+                trend = 'down'
+        except (ValueError, ZeroDivisionError):
+            pass
+
+    # State-level prices
+    state_prices = {}
+    state_pattern = re.findall(
+        rf'/crop/{re.escape(slug)}/([a-z-]+).*?₹([\d,]+\.?\d*)', html
+    )
+    for state_slug, price_str in state_pattern:
+        state_name = STATE_SLUG_TO_NAME.get(state_slug, state_slug.replace('-', ' ').title())
+        try:
+            state_prices[state_name] = to_num(price_str)
+        except ValueError:
+            pass
+
+    return {
+        'national_avg': round(national_avg, 2),
+        'price_min': round(price_min, 2),
+        'price_max': round(price_max, 2),
+        'num_mandis': num_mandis,
+        'trend': trend,
+        'state_prices': state_prices,
+        'live': True,
+    }
+
+
 def get_crop_price(crop_name, state=None):
-    """Get market price info for a crop, optionally localized to a state."""
-    crop = CROP_PRICES.get(crop_name)
-    if not crop:
+    """Get market price info for a crop. Tries live data first, falls back to static."""
+    live = _fetch_live_price(crop_name)
+
+    if live:
+        result = {
+            'crop': crop_name,
+            'msp': MSP_DATA.get(crop_name),
+            'national_avg': live['national_avg'],
+            'price_range': f"₹{int(live['price_min']):,} - ₹{int(live['price_max']):,}",
+            'unit': '₹/Quintal',
+            'season': STATIC_PRICES.get(crop_name, {}).get('season', ''),
+            'num_mandis': live['num_mandis'],
+            'live': True,
+        }
+
+        if state and state in live['state_prices']:
+            result['state_price'] = live['state_prices'][state]
+            result['state'] = state
+        else:
+            result['state_price'] = live['national_avg']
+            result['state'] = 'National'
+
+        result['trend'] = live['trend']
+        return result
+
+    # Fallback to static
+    static = STATIC_PRICES.get(crop_name)
+    if not static:
         return None
 
     result = {
         'crop': crop_name,
-        'msp': crop['msp'],
-        'national_avg': crop['mandi_avg'],
-        'price_range': f"₹{crop['mandi_min']} - ₹{crop['mandi_max']}",
-        'unit': crop['unit'],
-        'season': crop['season'],
+        'msp': MSP_DATA.get(crop_name),
+        'national_avg': static['avg'],
+        'price_range': f"₹{static['min']:,} - ₹{static['max']:,}",
+        'unit': '₹/Quintal',
+        'season': static['season'],
+        'live': False,
     }
-
-    if state and state in crop.get('top_states', {}):
-        state_data = crop['top_states'][state]
-        result['state_price'] = state_data['avg']
-        result['state'] = state
-        result['trend'] = state_data['trend']
-    else:
-        result['state_price'] = crop['mandi_avg']
-        result['state'] = 'National'
-        result['trend'] = 'stable'
-
+    result['state_price'] = static['avg']
+    result['state'] = 'National'
+    result['trend'] = 'stable'
     return result
 
 
 def get_prices_for_recommendations(crop_list, state=None):
-    """Get prices for a list of recommended crops, sorted by profitability."""
-    prices = []
+    """Get prices for recommended crops. Fetches live prices in parallel."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    crop_names = []
+    confidence_map = {}
     for item in crop_list:
-        crop_name = item.get('crop', item) if isinstance(item, dict) else item
-        price = get_crop_price(crop_name, state)
+        name = item.get('crop', item) if isinstance(item, dict) else item
+        crop_names.append(name)
+        confidence_map[name] = item.get('confidence', 0) if isinstance(item, dict) else 0
+
+    # Parallel live fetch (max 6 concurrent to be polite)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(_fetch_live_price, name): name for name in crop_names}
+        for f in as_completed(futures):
+            pass  # results are cached
+
+    prices = []
+    for name in crop_names:
+        price = get_crop_price(name, state)
         if price:
-            price['recommendation_confidence'] = item.get('confidence', 0) if isinstance(item, dict) else 0
+            price['recommendation_confidence'] = confidence_map.get(name, 0)
             prices.append(price)
 
     prices.sort(key=lambda x: -(x.get('state_price', 0) or x.get('national_avg', 0)))

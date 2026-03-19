@@ -372,6 +372,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const pl = $('priceList');
         pl.innerHTML = '';
 
+        const hasLive = prices.some(p => p.live);
+        const heading = $('priceCard').querySelector('h3');
+        heading.innerHTML = hasLive
+            ? 'Market Prices (₹/Quintal) <span class="live-dot"></span><span class="live-badge">LIVE</span>'
+            : 'Market Prices (₹/Quintal)';
+
         prices.forEach((p, i) => {
             const trendIcon = p.trend === 'up' ? '↑' : p.trend === 'down' ? '↓' : '→';
             const trendClass = p.trend === 'up' ? 'trend-up' : p.trend === 'down' ? 'trend-down' : 'trend-stable';
@@ -382,13 +388,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="price-header">
                     <span class="price-crop">${p.crop}</span>
                     <span class="price-tag ${trendClass}">
-                        <strong>₹${(p.state_price || p.national_avg).toLocaleString('en-IN')}</strong>
+                        <strong>₹${Math.round(p.state_price || p.national_avg).toLocaleString('en-IN')}</strong>
                         <span class="trend-icon">${trendIcon}</span>
                     </span>
                 </div>
                 <div class="price-details">
                     <span class="price-detail">${p.state !== 'National' ? p.state : 'India Avg'}</span>
                     <span class="price-detail">Range: ${p.price_range}</span>
+                    ${p.num_mandis ? `<span class="price-detail">${p.num_mandis} mandis</span>` : ''}
                     ${p.msp ? `<span class="price-detail msp-badge">MSP ₹${p.msp.toLocaleString('en-IN')}</span>` : ''}
                 </div>
             `;
