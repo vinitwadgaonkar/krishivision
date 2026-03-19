@@ -308,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Leaf recommendations
+        // Leaf recommendations / treatment plan
         if (la.recommendations?.length) {
             $('leafRecsCard').style.display = '';
             const lr = $('leafRecs');
@@ -316,6 +316,23 @@ document.addEventListener('DOMContentLoaded', () => {
             la.recommendations.forEach(r => {
                 if (r.type === 'info') {
                     lr.innerHTML += `<p style="color:var(--emerald-600);font-weight:600">${r.message}</p>`;
+                } else if (r.type === 'deficiency') {
+                    const sevClass = r.severity === 'Severe' ? 'badge-severe' : r.severity === 'Moderate' ? 'badge-moderate' : 'badge-mild';
+                    lr.innerHTML += `<div class="issue-item">
+                        <div class="issue-icon def">${r.nutrient[0]}</div>
+                        <div class="issue-info">
+                            <div class="issue-name">${r.nutrient} <span class="issue-badge ${sevClass}">${r.severity}</span></div>
+                            <div class="issue-treatment">${r.action}</div>
+                        </div>
+                    </div>`;
+                } else if (r.type === 'disease') {
+                    lr.innerHTML += `<div class="issue-item">
+                        <div class="issue-icon dis">!</div>
+                        <div class="issue-info">
+                            <div class="issue-name">${r.disease}</div>
+                            <div class="issue-treatment">${r.action}</div>
+                        </div>
+                    </div>`;
                 }
             });
         } else { $('leafRecsCard').style.display = 'none'; }
