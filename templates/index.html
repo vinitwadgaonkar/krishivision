@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KrishiVision — AI Farm Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="brand">
+                    <div class="brand-icon">
+                        <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" fill="rgba(255,255,255,0.15)"/><path d="M18 6c-2 5-9 9-9 16a9 9 0 0018 0c0-7-7-11-9-16z" fill="white"/><path d="M18 14v12M15 21h6" stroke="#059669" stroke-width="2" stroke-linecap="round"/></svg>
+                    </div>
+                    <div>
+                        <h1>KrishiVision</h1>
+                        <p class="tagline">One Photo. Zero Typing. Full Intelligence.</p>
+                    </div>
+                </div>
+                <!-- Auto Context Badge -->
+                <div class="context-badge" id="contextBadge">
+                    <div class="context-dot"></div>
+                    <span id="contextText">Getting location...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Auto Context Bar -->
+        <div class="context-bar" id="contextBar" style="display:none">
+            <div class="context-chips">
+                <div class="chip" id="chipLocation"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 1C5.2 1 3 3.2 3 6c0 4 5 9 5 9s5-5 5-9c0-2.8-2.2-5-5-5zm0 7a2 2 0 110-4 2 2 0 010 4z" fill="currentColor"/></svg> <span>--</span></div>
+                <div class="chip" id="chipWeather"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.2"/></svg> <span>--</span></div>
+                <div class="chip" id="chipSeason"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 2v5l3 3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg> <span>--</span></div>
+                <div class="chip" id="chipSoilType"><svg viewBox="0 0 16 16" width="14" height="14"><rect x="2" y="8" width="12" height="6" rx="1" fill="currentColor" opacity="0.5"/><rect x="2" y="2" width="12" height="6" rx="1" fill="currentColor" opacity="0.3"/></svg> <span>--</span></div>
+            </div>
+        </div>
+
+        <!-- Mode Selector -->
+        <nav class="mode-nav">
+            <button class="mode-btn active" data-mode="soil">
+                <div class="mode-icon soil-icon"></div>
+                <span>Scan Soil</span>
+            </button>
+            <button class="mode-btn" data-mode="leaf">
+                <div class="mode-icon leaf-icon"></div>
+                <span>Scan Leaf</span>
+            </button>
+            <button class="mode-btn" data-mode="manual">
+                <div class="mode-icon manual-icon"></div>
+                <span>Manual Input</span>
+            </button>
+        </nav>
+
+        <main class="main">
+            <!-- Soil Scan Mode -->
+            <section class="mode-panel active" id="panel-soil">
+                <div class="card scan-card">
+                    <input type="file" id="soilInput" accept="image/*" capture="environment" hidden>
+                    <div class="scan-zone" id="soilZone">
+                        <div class="scan-illustration">
+                            <svg viewBox="0 0 80 80" width="80"><rect x="10" y="40" width="60" height="30" rx="6" fill="#92400e" opacity="0.2"/><rect x="10" y="50" width="60" height="20" rx="6" fill="#92400e" opacity="0.3"/><rect x="10" y="56" width="60" height="14" rx="6" fill="#92400e" opacity="0.4"/><circle cx="40" cy="30" r="14" fill="none" stroke="#059669" stroke-width="2.5" stroke-dasharray="4 3"/><path d="M40 22v16M32 30h16" stroke="#059669" stroke-width="2" stroke-linecap="round"/></svg>
+                        </div>
+                        <h3>Point at your soil</h3>
+                        <p>Take a close-up photo of bare soil on your field</p>
+                        <button class="btn btn-primary btn-lg" id="btnSoilCamera">
+                            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                            Open Camera
+                        </button>
+                    </div>
+                    <div class="preview" id="soilPreview" style="display:none">
+                        <img id="soilImg" alt="Soil preview">
+                        <div class="preview-bar">
+                            <button class="btn btn-primary" id="btnSoilAnalyze">Analyze Soil</button>
+                            <button class="btn btn-ghost" id="btnSoilRetake">Retake</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Leaf Scan Mode -->
+            <section class="mode-panel" id="panel-leaf">
+                <div class="card scan-card">
+                    <input type="file" id="leafInput" accept="image/*" capture="environment" hidden>
+                    <div class="scan-zone" id="leafZone">
+                        <div class="scan-illustration">
+                            <svg viewBox="0 0 80 80" width="80"><path d="M40 10C25 20 15 35 18 55c5-2 12-2 18-8 6 6 13 6 18 8C57 35 47 20 40 10z" fill="#16a34a" opacity="0.2" stroke="#16a34a" stroke-width="2"/><path d="M40 25v35M32 35c4 2 6 5 8 8M48 35c-4 2-6 5-8 8" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        </div>
+                        <h3>Photograph a leaf</h3>
+                        <p>Hold a single leaf against a plain background</p>
+                        <button class="btn btn-primary btn-lg" id="btnLeafCamera">
+                            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                            Open Camera
+                        </button>
+                    </div>
+                    <div class="preview" id="leafPreview" style="display:none">
+                        <img id="leafImg" alt="Leaf preview">
+                        <div class="preview-bar">
+                            <button class="btn btn-primary" id="btnLeafAnalyze">Analyze Leaf</button>
+                            <button class="btn btn-ghost" id="btnLeafRetake">Retake</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Manual Input Mode -->
+            <section class="mode-panel" id="panel-manual">
+                <div class="card">
+                    <h2 class="card-title">Enter Soil Parameters</h2>
+                    <p class="card-desc">Values from your Soil Health Card</p>
+                    <form id="manualForm">
+                        <div class="form-section"><h3 class="section-title">Primary</h3>
+                            <div class="form-grid">
+                                <div class="fg"><label>pH</label><input type="number" name="pH" step="0.01" min="0" max="14" placeholder="7.5"><span class="hint">6.5–7.5</span></div>
+                                <div class="fg"><label>EC (dS/m)</label><input type="number" name="ec" step="0.01" min="0" placeholder="0.10"><span class="hint">&lt; 1.0</span></div>
+                                <div class="fg"><label>Org. Carbon (%)</label><input type="number" name="oc" step="0.01" min="0" placeholder="0.50"><span class="hint">0.50–0.75</span></div>
+                            </div>
+                        </div>
+                        <div class="form-section"><h3 class="section-title">Macronutrients</h3>
+                            <div class="form-grid">
+                                <div class="fg"><label>Nitrogen (kg/ha)</label><input type="number" name="nitrogen" step="0.1" placeholder="256"></div>
+                                <div class="fg"><label>Phosphorus (kg/ha)</label><input type="number" name="phosphorus" step="0.01" placeholder="19.19"></div>
+                                <div class="fg"><label>Potassium (kg/ha)</label><input type="number" name="potassium" step="0.1" placeholder="174"></div>
+                            </div>
+                        </div>
+                        <div class="form-section"><h3 class="section-title">Micronutrients</h3>
+                            <div class="form-grid">
+                                <div class="fg"><label>Sulphur (mg/kg)</label><input type="number" name="sulphur" step="0.01" placeholder="3.09"></div>
+                                <div class="fg"><label>Zinc (mg/kg)</label><input type="number" name="zinc" step="0.01" placeholder="0.46"></div>
+                                <div class="fg"><label>Boron (mg/kg)</label><input type="number" name="boron" step="0.01" placeholder="0.20"></div>
+                                <div class="fg"><label>Iron (mg/kg)</label><input type="number" name="iron" step="0.01" placeholder="3.83"></div>
+                                <div class="fg"><label>Copper (mg/kg)</label><input type="number" name="copper" step="0.01" placeholder="0.15"></div>
+                                <div class="fg"><label>Manganese (ppm)</label><input type="number" name="manganese" step="0.01" placeholder="1.37"></div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Analyze</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ═══ Results Section ═══ -->
+            <section id="results" style="display:none">
+                <div class="results-top">
+                    <h2>Analysis Results</h2>
+                    <button class="btn btn-ghost btn-sm" id="btnBack">New Scan</button>
+                </div>
+
+                <!-- Soil Vision Results (only for soil scan) -->
+                <div class="card" id="soilVisionCard" style="display:none">
+                    <h3 class="card-title">Soil Vision Analysis</h3>
+                    <div class="vision-grid">
+                        <div class="vision-item">
+                            <div class="vision-label">Soil Type</div>
+                            <div class="vision-value" id="vSoilType">--</div>
+                            <div class="vision-conf" id="vSoilConf">--</div>
+                        </div>
+                        <div class="vision-item">
+                            <div class="vision-label">Moisture</div>
+                            <div class="vision-value" id="vMoisture">--</div>
+                        </div>
+                        <div class="vision-item">
+                            <div class="vision-label">Organic Carbon</div>
+                            <div class="vision-value" id="vOC">--</div>
+                        </div>
+                        <div class="vision-item">
+                            <div class="vision-label">Color</div>
+                            <div class="color-swatch" id="vColorSwatch"></div>
+                            <div class="vision-value" id="vColor">--</div>
+                        </div>
+                        <div class="vision-item">
+                            <div class="vision-label">Texture</div>
+                            <div class="vision-value" id="vTexture">--</div>
+                        </div>
+                        <div class="vision-item">
+                            <div class="vision-label">Est. pH</div>
+                            <div class="vision-value" id="vPH">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Leaf Doctor Results (only for leaf scan) -->
+                <div class="card" id="leafDoctorCard" style="display:none">
+                    <h3 class="card-title">Leaf Health Report</h3>
+                    <div class="health-ring-container">
+                        <div class="health-ring" id="healthRing">
+                            <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#e5e7eb" stroke-width="10"/><circle cx="60" cy="60" r="52" fill="none" stroke="#22c55e" stroke-width="10" stroke-dasharray="0 327" stroke-linecap="round" transform="rotate(-90 60 60)" id="healthArc"/></svg>
+                            <div class="health-ring-text"><span id="healthScore">--</span><small>Health</small></div>
+                        </div>
+                        <div class="health-status" id="healthStatus">--</div>
+                    </div>
+                    <div id="deficiencyList"></div>
+                    <div id="diseaseList"></div>
+                </div>
+
+                <!-- SQI Gauge -->
+                <div class="card sqi-card" id="sqiCard" style="display:none">
+                    <h3>Soil Health Index</h3>
+                    <div class="gauge-wrap">
+                        <div class="gauge">
+                            <svg viewBox="0 0 200 120">
+                                <defs><linearGradient id="gg" x1="0%" y1="0%" x2="100%"><stop offset="0%" stop-color="#ef4444"/><stop offset="40%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#22c55e"/></linearGradient></defs>
+                                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e5e7eb" stroke-width="14" stroke-linecap="round"/>
+                                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gg)" stroke-width="14" stroke-linecap="round" id="gaugeArc" stroke-dasharray="0 251.2"/>
+                                <line x1="100" y1="100" x2="100" y2="30" stroke="#1f2937" stroke-width="3" stroke-linecap="round" id="gaugeNeedle" transform="rotate(-90,100,100)"/>
+                                <circle cx="100" cy="100" r="5" fill="#1f2937"/>
+                            </svg>
+                            <div class="gauge-num" id="sqiNum">0.00</div>
+                        </div>
+                        <div class="gauge-labels"><span class="lbl-poor">Poor</span><span class="lbl-med">Medium</span><span class="lbl-good">Good</span></div>
+                        <div class="sqi-badge" id="sqiBadge">--</div>
+                    </div>
+                </div>
+
+                <!-- Nutrients -->
+                <div class="card" id="nutrientCard" style="display:none">
+                    <h3>Nutrient Status</h3>
+                    <div class="nutrient-grid" id="nutrientGrid"></div>
+                </div>
+
+                <!-- Crops -->
+                <div class="card" id="cropCard" style="display:none">
+                    <h3>Recommended Crops</h3>
+                    <div id="cropList"></div>
+                </div>
+
+                <!-- Fertilizer -->
+                <div class="card" id="fertCard" style="display:none">
+                    <h3>Fertilizer Recommendations</h3>
+                    <div id="fertContent"></div>
+                </div>
+
+                <!-- Leaf Recommendations -->
+                <div class="card" id="leafRecsCard" style="display:none">
+                    <h3>Treatment Plan</h3>
+                    <div id="leafRecs"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Loading -->
+        <div class="loading" id="loading" style="display:none">
+            <div class="loader-box">
+                <div class="spinner"></div>
+                <p class="loader-title" id="loaderTitle">Analyzing...</p>
+                <p class="loader-sub" id="loaderSub">Processing image + fetching weather</p>
+                <div class="loader-steps" id="loaderSteps"></div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
