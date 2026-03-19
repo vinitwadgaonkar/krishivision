@@ -122,8 +122,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const s = contextData.season || {};
         const r = contextData.regional_soil || {};
 
+        const area = w.location?.area && w.location.area !== 'Unknown' ? w.location.area : null;
+        const region = w.location?.region && w.location.region !== 'Unknown' ? w.location.region : null;
         $('chipLocation').querySelector('span').textContent =
-            w.location?.area ? `${w.location.area}, ${w.location.region}` : `${geoState.lat.toFixed(2)}, ${geoState.lon.toFixed(2)}`;
+            area ? (region && region !== area ? `${area}, ${region}` : area) : `${geoState.lat.toFixed(2)}, ${geoState.lon.toFixed(2)}`;
         $('chipWeather').querySelector('span').textContent =
             w.success ? `${w.temperature}°C, ${w.humidity}% RH` : '--';
         $('chipSeason').querySelector('span').textContent = s.season || '--';

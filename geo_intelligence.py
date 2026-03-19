@@ -10,62 +10,79 @@ from datetime import datetime, date
 
 
 def get_weather(lat, lon):
-    """Fetch live weather from wttr.in (free, no API key needed)."""
+    """Fetch live weather from Open-Meteo API (free, no API key, reliable globally)."""
     try:
-        url = f"https://wttr.in/{lat},{lon}?format=j1"
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,"
+            f"wind_speed_10m,apparent_temperature"
+            f"&daily=precipitation_sum&timezone=auto&forecast_days=3"
+        )
         req = urllib.request.Request(url, headers={'User-Agent': 'KrishiVision/1.0'})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
 
-        current = data.get('current_condition', [{}])[0]
-        weather = data.get('weather', [{}])
+        current = data.get('current', {})
+        daily = data.get('daily', {})
 
-        temp = float(current.get('temp_C', 25))
-        humidity = float(current.get('humidity', 70))
-        precip = float(current.get('precipMM', 0))
-        weather_desc = current.get('weatherDesc', [{}])[0].get('value', 'Unknown')
-        feels_like = float(current.get('FeelsLikeC', temp))
-        wind_speed = float(current.get('windspeedKmph', 0))
-        uv_index = int(current.get('uvIndex', 5))
+        temp = float(current.get('temperature_2m', 25))
+        humidity = float(current.get('relative_humidity_2m', 70))
+        precip = float(current.get('precipitation', 0))
+        feels_like = float(current.get('apparent_temperature', temp))
+        wind_speed = float(current.get('wind_speed_10m', 0))
+        weather_code = int(current.get('weather_code', 0))
 
-        avg_rainfall = 0
-        for w in weather[:3]:
-            avg_rainfall += float(w.get('totalSnow_cm', 0)) * 10
-            hourly = w.get('hourly', [])
-            for h in hourly:
-                avg_rainfall += float(h.get('precipMM', 0))
+        weather_desc = _weather_code_to_desc(weather_code)
 
-        nearest = data.get('nearest_area', [{}])[0]
-        area_name = nearest.get('areaName', [{}])[0].get('value', 'Unknown')
-        region = nearest.get('region', [{}])[0].get('value', 'Unknown')
-        country = nearest.get('country', [{}])[0].get('value', 'Unknown')
+        rainfall_3day = 0
+        for p in (daily.get('precipitation_sum') or []):
+            rainfall_3day += float(p or 0)
+
+        state = get_state_from_coords(lat, lon)
+        area_name = state or f"{lat:.2f}, {lon:.2f}"
+        region = 'India' if state else 'Unknown'
 
         return {
             'success': True,
-            'temperature': temp,
-            'humidity': humidity,
-            'precipitation_mm': precip,
-            'feels_like': feels_like,
-            'wind_speed_kmph': wind_speed,
-            'uv_index': uv_index,
+            'temperature': round(temp, 1),
+            'humidity': round(humidity, 1),
+            'precipitation_mm': round(precip, 1),
+            'feels_like': round(feels_like, 1),
+            'wind_speed_kmph': round(wind_speed, 1),
+            'uv_index': 5,
             'weather_description': weather_desc,
-            'rainfall_3day': round(avg_rainfall, 1),
+            'rainfall_3day': round(rainfall_3day, 1),
             'location': {
                 'area': area_name,
                 'region': region,
-                'country': country,
+                'country': 'India' if state else 'Unknown',
                 'lat': lat,
                 'lon': lon,
             },
         }
     except Exception as e:
+        state = get_state_from_coords(lat, lon)
         return {
             'success': False,
             'error': str(e),
             'temperature': 25, 'humidity': 70,
             'precipitation_mm': 0, 'rainfall_3day': 100,
-            'location': {'lat': lat, 'lon': lon, 'area': 'Unknown'},
+            'location': {'lat': lat, 'lon': lon, 'area': state or 'Unknown'},
         }
+
+
+def _weather_code_to_desc(code):
+    """Convert WMO weather code to human description."""
+    codes = {
+        0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+        45: 'Foggy', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Moderate drizzle',
+        55: 'Dense drizzle', 61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain',
+        71: 'Slight snow', 73: 'Moderate snow', 75: 'Heavy snow',
+        80: 'Slight rain showers', 81: 'Moderate rain showers', 82: 'Violent rain showers',
+        95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Thunderstorm with heavy hail',
+    }
+    return codes.get(code, 'Unknown')
 
 
 def detect_season(lat, lon, date_obj=None):
