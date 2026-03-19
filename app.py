@@ -173,10 +173,19 @@ def price_test():
     except Exception as e:
         results['html_page'] = {'error': str(e)}
 
-    # Also test one live price fetch through our actual code
-    from market_prices import _fetch_live_price
-    live = _fetch_live_price('Wheat')
-    results['live_fetch_result'] = live if live else 'failed'
+    # Check build cache status
+    from market_prices import _build_cache, get_crop_price
+    results['build_cache_count'] = len(_build_cache)
+    results['build_cache_crops'] = list(_build_cache.keys())[:5]
+
+    # Test full get_crop_price (should use build cache if live fails)
+    wheat_price = get_crop_price('Wheat', 'Maharashtra')
+    results['wheat_result'] = wheat_price
+
+    import os
+    cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cached_prices.json')
+    results['cache_file_exists'] = os.path.exists(cache_file)
+    results['cache_file_path'] = cache_file
 
     return jsonify(results)
 
