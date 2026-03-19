@@ -9,6 +9,11 @@ import re
 import time
 import threading
 import subprocess
+import http.client
+import ssl
+import logging
+
+log = logging.getLogger(__name__)
 
 # ── Crop name → mandibhav.in URL slug mapping ─────────────────────
 CROP_SLUG_MAP = {
@@ -112,6 +117,51 @@ STATIC_PRICES = {
 }
 
 
+def _http_get(path):
+    """Fetch HTML from mandibhav.in using multiple strategies."""
+    # Strategy 1: http.client (no external deps, bypasses some CF checks)
+    try:
+        ctx = ssl.create_default_context()
+        conn = http.client.HTTPSConnection('mandibhav.in', timeout=8, context=ctx)
+        conn.request('GET', path, headers={
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-IN,en;q=0.9',
+            'Connection': 'close',
+        })
+        resp = conn.getresponse()
+        if resp.status == 200:
+            html = resp.read().decode('utf-8', errors='ignore')
+            conn.close()
+            if len(html) > 500:
+                return html
+        elif resp.status in (301, 302, 303, 307, 308):
+            loc = resp.getheader('Location', '')
+            conn.close()
+            if loc:
+                log.info('Redirect to %s', loc)
+        else:
+            conn.close()
+            log.warning('http.client got %d for %s', resp.status, path)
+    except Exception as e:
+        log.warning('http.client failed for %s: %s', path, e)
+
+    # Strategy 2: curl subprocess fallback
+    try:
+        proc = subprocess.run(
+            ['curl', '-sL', '--max-time', '6', f'https://mandibhav.in{path}'],
+            capture_output=True, timeout=8,
+        )
+        if proc.returncode == 0:
+            html = proc.stdout.decode('utf-8', errors='ignore')
+            if len(html) > 500:
+                return html
+    except Exception as e:
+        log.warning('curl fallback failed for %s: %s', path, e)
+
+    return None
+
+
 def _fetch_live_price(crop_name):
     """Scrape live mandi price from mandibhav.in for a single crop."""
     slug = CROP_SLUG_MAP.get(crop_name)
@@ -123,18 +173,9 @@ def _fetch_live_price(crop_name):
         if cached and (time.time() - cached['ts']) < CACHE_TTL:
             return cached['data']
 
-    url = f'https://mandibhav.in/crop/{slug}'
-    try:
-        proc = subprocess.run(
-            ['curl', '-sL', '--max-time', '6', url],
-            capture_output=True, timeout=8,
-        )
-        if proc.returncode != 0:
-            return None
-        html = proc.stdout.decode('utf-8', errors='ignore')
-        if not html or len(html) < 500:
-            return None
-    except Exception:
+    path = f'/crop/{slug}'
+    html = _http_get(path)
+    if not html:
         return None
 
     result = _parse_price_html(html, crop_name, slug)
