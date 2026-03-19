@@ -6,9 +6,9 @@ Prices in INR per Quintal (100 kg).
 """
 
 import re
+import json
 import time
 import threading
-import subprocess
 import http.client
 import ssl
 import logging
@@ -117,53 +117,106 @@ STATIC_PRICES = {
 }
 
 
-def _http_get(path):
-    """Fetch HTML from mandibhav.in using multiple strategies."""
-    # Strategy 1: http.client (no external deps, bypasses some CF checks)
+def _fetch_json(slug):
+    """Fetch structured price data from mandibhav.in SvelteKit __data.json endpoint."""
+    path = f'/crop/{slug}/__data.json'
     try:
         ctx = ssl.create_default_context()
         conn = http.client.HTTPSConnection('mandibhav.in', timeout=8, context=ctx)
         conn.request('GET', path, headers={
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-IN,en;q=0.9',
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
+            'Accept': 'application/json',
             'Connection': 'close',
         })
         resp = conn.getresponse()
-        if resp.status == 200:
-            html = resp.read().decode('utf-8', errors='ignore')
-            conn.close()
-            if len(html) > 500:
-                return html
-        elif resp.status in (301, 302, 303, 307, 308):
-            loc = resp.getheader('Location', '')
-            conn.close()
-            if loc:
-                log.info('Redirect to %s', loc)
-        else:
-            conn.close()
-            log.warning('http.client got %d for %s', resp.status, path)
+        body = resp.read()
+        conn.close()
+        if resp.status == 200 and len(body) > 100:
+            return json.loads(body.decode('utf-8', errors='ignore'))
     except Exception as e:
-        log.warning('http.client failed for %s: %s', path, e)
-
-    # Strategy 2: curl subprocess fallback
-    try:
-        proc = subprocess.run(
-            ['curl', '-sL', '--max-time', '6', f'https://mandibhav.in{path}'],
-            capture_output=True, timeout=8,
-        )
-        if proc.returncode == 0:
-            html = proc.stdout.decode('utf-8', errors='ignore')
-            if len(html) > 500:
-                return html
-    except Exception as e:
-        log.warning('curl fallback failed for %s: %s', path, e)
-
+        log.warning('Failed to fetch %s: %s', path, e)
     return None
 
 
+def _parse_sveltekit_data(raw, slug):
+    """Parse SvelteKit devalue format into structured price data.
+
+    Devalue format: flat array where dict entries map key names to indices
+    of their values in the same array. e.g. {name: 5, price: 6} means
+    the name is at entries[5] and price at entries[6].
+    """
+    try:
+        nodes = raw.get('nodes', [])
+        if len(nodes) < 2:
+            return None
+        entries = nodes[1].get('data', [])
+        if len(entries) < 12:
+            return None
+
+        def val(idx):
+            return entries[idx] if isinstance(idx, int) and 0 <= idx < len(entries) else idx
+
+        schema = entries[0]
+        cp_idx = schema.get('currentPrice')
+        if cp_idx is None:
+            return None
+
+        cp = entries[cp_idx]
+        national_avg = val(cp['average'])
+        price_min = val(cp['min'])
+        price_max = val(cp['max'])
+        num_mandis = val(cp.get('locations', 0))
+
+        if not isinstance(national_avg, (int, float)):
+            return None
+
+        # State averages
+        state_prices = {}
+        sa_idx = schema.get('stateAverages')
+        if sa_idx is not None:
+            state_ref_list = entries[sa_idx]
+            if isinstance(state_ref_list, list):
+                for si in state_ref_list:
+                    st = entries[si] if isinstance(si, int) else None
+                    if isinstance(st, dict) and 'name' in st and 'average' in st:
+                        name = val(st['name'])
+                        avg = val(st['average'])
+                        slug_val = val(st['slug']) if 'slug' in st else ''
+                        real_name = STATE_SLUG_TO_NAME.get(slug_val, name) if slug_val else name
+                        if isinstance(avg, (int, float)):
+                            state_prices[real_name] = avg
+
+        # 7-day trend from chart data
+        trend = 'stable'
+        cd_idx = schema.get('chartData')
+        if cd_idx is not None:
+            chart_ref_list = entries[cd_idx]
+            if isinstance(chart_ref_list, list) and len(chart_ref_list) >= 2:
+                first = entries[chart_ref_list[0]]
+                last = entries[chart_ref_list[-1]]
+                if isinstance(first, dict) and isinstance(last, dict):
+                    older = val(first.get('price', first.get('average', 0)))
+                    recent = val(last.get('price', last.get('average', 0)))
+                    if isinstance(older, (int, float)) and isinstance(recent, (int, float)) and older > 0:
+                        pct = ((recent - older) / older) * 100
+                        trend = 'up' if pct > 1.5 else ('down' if pct < -1.5 else 'stable')
+
+        return {
+            'national_avg': round(float(national_avg), 2),
+            'price_min': round(float(price_min), 2),
+            'price_max': round(float(price_max), 2),
+            'num_mandis': int(num_mandis) if isinstance(num_mandis, (int, float)) else 0,
+            'trend': trend,
+            'state_prices': state_prices,
+            'live': True,
+        }
+    except Exception as e:
+        log.warning('Failed to parse data for %s: %s', slug, e)
+        return None
+
+
 def _fetch_live_price(crop_name):
-    """Scrape live mandi price from mandibhav.in for a single crop."""
+    """Fetch live mandi price from mandibhav.in for a single crop."""
     slug = CROP_SLUG_MAP.get(crop_name)
     if not slug:
         return None
@@ -173,71 +226,15 @@ def _fetch_live_price(crop_name):
         if cached and (time.time() - cached['ts']) < CACHE_TTL:
             return cached['data']
 
-    path = f'/crop/{slug}'
-    html = _http_get(path)
-    if not html:
+    raw = _fetch_json(slug)
+    if not raw:
         return None
 
-    result = _parse_price_html(html, crop_name, slug)
+    result = _parse_sveltekit_data(raw, slug)
     if result:
         with _cache_lock:
             _cache[slug] = {'data': result, 'ts': time.time()}
     return result
-
-
-def _parse_price_html(html, crop_name, slug):
-    """Extract price data from mandibhav.in crop page HTML."""
-    avg_m = re.search(r'Average Price.*?₹([\d,]+\.?\d*)', html, re.DOTALL)
-    range_m = re.search(r'Price Range.*?₹([\d,]+).*?₹([\d,]+)', html, re.DOTALL)
-    mandis_m = re.search(r'across\s+([\d,]+)\s+mandis', html)
-
-    if not avg_m:
-        return None
-
-    def to_num(s):
-        return float(s.replace(',', ''))
-
-    national_avg = to_num(avg_m.group(1))
-    price_min = to_num(range_m.group(1)) if range_m else national_avg * 0.7
-    price_max = to_num(range_m.group(2)) if range_m else national_avg * 1.5
-    num_mandis = int(mandis_m.group(1).replace(',', '')) if mandis_m else 0
-
-    # 7-day trend from price history table
-    history_prices = re.findall(r'₹([\d,]+\.?\d*)\s*</td>', html)
-    trend = 'stable'
-    if len(history_prices) >= 2:
-        try:
-            recent = to_num(history_prices[-1])
-            older = to_num(history_prices[0])
-            pct = ((recent - older) / older) * 100
-            if pct > 1.5:
-                trend = 'up'
-            elif pct < -1.5:
-                trend = 'down'
-        except (ValueError, ZeroDivisionError):
-            pass
-
-    # State-level prices
-    state_prices = {}
-    state_pattern = re.findall(
-        rf'/crop/{re.escape(slug)}/([a-z-]+).*?₹([\d,]+\.?\d*)', html
-    )
-    for state_slug, price_str in state_pattern:
-        state_name = STATE_SLUG_TO_NAME.get(state_slug, state_slug.replace('-', ' ').title())
-        try:
-            state_prices[state_name] = to_num(price_str)
-        except ValueError:
-            pass
-
-    return {
-        'national_avg': round(national_avg, 2),
-        'price_min': round(price_min, 2),
-        'price_max': round(price_max, 2),
-        'num_mandis': num_mandis,
-        'trend': trend,
-        'state_prices': state_prices,
-        'live': True,
-    }
 
 
 def get_crop_price(crop_name, state=None):
