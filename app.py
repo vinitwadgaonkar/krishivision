@@ -13,6 +13,7 @@ from soil_vision import analyze_soil_image
 from leaf_doctor import analyze_leaf_image
 from geo_intelligence import get_full_context, get_weather, detect_season, get_soil_data_for_location
 from train_model import compute_soil_health_index, classify_health, generate_fertilizer_recommendations
+from market_prices import get_prices_for_recommendations
 
 app = Flask(__name__)
 CORS(app)
@@ -76,6 +77,11 @@ def scan_soil():
     ml_result = _run_ml_prediction(params)
     crop_recs = _get_crop_recommendations(params)
 
+    state = None
+    if geo_context and geo_context.get('regional_soil', {}).get('success'):
+        state = geo_context['regional_soil'].get('state')
+    market_prices = get_prices_for_recommendations(crop_recs, state)
+
     return jsonify({
         'soil_analysis': soil_analysis,
         'soil_health': {
@@ -85,6 +91,7 @@ def scan_soil():
         },
         'nutrient_status': _get_nutrient_status(params),
         'crop_recommendations': crop_recs,
+        'market_prices': market_prices,
         'fertilizer_recommendations': fert,
         'geo_context': geo_context,
     })
@@ -155,6 +162,7 @@ def analyze_manual():
     ml_result = _run_ml_prediction(params)
     crop_recs = _get_crop_recommendations(params)
     fert = generate_fertilizer_recommendations(params)
+    market_prices = get_prices_for_recommendations(crop_recs)
 
     return jsonify({
         'soil_health': {
@@ -165,6 +173,7 @@ def analyze_manual():
         },
         'nutrient_status': _get_nutrient_status(params),
         'crop_recommendations': crop_recs,
+        'market_prices': market_prices,
         'fertilizer_recommendations': fert,
         'input_values': params,
     })

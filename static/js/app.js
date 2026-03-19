@@ -243,6 +243,12 @@ document.addEventListener('DOMContentLoaded', () => {
             renderCrops(data.crop_recommendations);
         } else { $('cropCard').style.display = 'none'; }
 
+        // Market Prices
+        if (data.market_prices?.length) {
+            $('priceCard').style.display = '';
+            renderPrices(data.market_prices);
+        } else { $('priceCard').style.display = 'none'; }
+
         // Fertilizer
         if (data.fertilizer_recommendations) {
             $('fertCard').style.display = '';
@@ -359,6 +365,34 @@ document.addEventListener('DOMContentLoaded', () => {
         cl.innerHTML = '';
         crops.forEach((c, i) => {
             cl.innerHTML += `<div class="crop-item"><span class="crop-rank">${i+1}</span><span class="crop-name">${c.crop}</span><span class="crop-conf">${(c.confidence*100).toFixed(1)}%</span></div>`;
+        });
+    }
+
+    function renderPrices(prices) {
+        const pl = $('priceList');
+        pl.innerHTML = '';
+
+        prices.forEach((p, i) => {
+            const trendIcon = p.trend === 'up' ? '↑' : p.trend === 'down' ? '↓' : '→';
+            const trendClass = p.trend === 'up' ? 'trend-up' : p.trend === 'down' ? 'trend-down' : 'trend-stable';
+
+            const row = document.createElement('div');
+            row.className = 'price-row' + (i === 0 ? ' price-top' : '');
+            row.innerHTML = `
+                <div class="price-header">
+                    <span class="price-crop">${p.crop}</span>
+                    <span class="price-tag ${trendClass}">
+                        <strong>₹${(p.state_price || p.national_avg).toLocaleString('en-IN')}</strong>
+                        <span class="trend-icon">${trendIcon}</span>
+                    </span>
+                </div>
+                <div class="price-details">
+                    <span class="price-detail">${p.state !== 'National' ? p.state : 'India Avg'}</span>
+                    <span class="price-detail">Range: ${p.price_range}</span>
+                    ${p.msp ? `<span class="price-detail msp-badge">MSP ₹${p.msp.toLocaleString('en-IN')}</span>` : ''}
+                </div>
+            `;
+            pl.appendChild(row);
         });
     }
 
