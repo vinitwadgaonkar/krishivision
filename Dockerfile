@@ -13,7 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN python train_model.py
-RUN python fetch_prices.py || echo "Price fetch failed, will use static fallback"
 
 ENV PORT=8080
 EXPOSE 8080
