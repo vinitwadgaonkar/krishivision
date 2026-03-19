@@ -80,6 +80,20 @@ _cache = {}
 _cache_lock = threading.Lock()
 CACHE_TTL = 3600  # 1 hour
 
+# ── Load build-time cached prices if available ─────────────────────
+_build_cache = {}
+try:
+    import os
+    _cache_path = os.path.join(os.path.dirname(__file__), 'cached_prices.json')
+    if os.path.exists(_cache_path):
+        with open(_cache_path) as _f:
+            _build_data = json.load(_f)
+            _build_cache = _build_data.get('prices', {})
+            log.info('Loaded %d build-time cached prices from %s',
+                     len(_build_cache), _build_data.get('fetched_at', '?'))
+except Exception:
+    pass
+
 
 # ── Official MSP 2025-26 (Government of India, CACP) ──────────────
 MSP_DATA = {
@@ -237,38 +251,49 @@ def _fetch_live_price(crop_name):
     return result
 
 
+def _format_price_result(data, crop_name, state, is_live):
+    """Format a price data dict into the API response format."""
+    result = {
+        'crop': crop_name,
+        'msp': MSP_DATA.get(crop_name),
+        'national_avg': data['national_avg'],
+        'price_range': f"₹{int(data['price_min']):,} - ₹{int(data['price_max']):,}",
+        'unit': '₹/Quintal',
+        'season': STATIC_PRICES.get(crop_name, {}).get('season', ''),
+        'num_mandis': data.get('num_mandis', 0),
+        'live': is_live,
+        'trend': data.get('trend', 'stable'),
+    }
+
+    state_prices = data.get('state_prices', {})
+    if state and state in state_prices:
+        result['state_price'] = state_prices[state]
+        result['state'] = state
+    else:
+        result['state_price'] = data['national_avg']
+        result['state'] = 'National'
+
+    return result
+
+
 def get_crop_price(crop_name, state=None):
-    """Get market price info for a crop. Tries live data first, falls back to static."""
+    """Get market price info for a crop. Priority: live > build-cache > static."""
+    # 1. Try live fetch
     live = _fetch_live_price(crop_name)
-
     if live:
-        result = {
-            'crop': crop_name,
-            'msp': MSP_DATA.get(crop_name),
-            'national_avg': live['national_avg'],
-            'price_range': f"₹{int(live['price_min']):,} - ₹{int(live['price_max']):,}",
-            'unit': '₹/Quintal',
-            'season': STATIC_PRICES.get(crop_name, {}).get('season', ''),
-            'num_mandis': live['num_mandis'],
-            'live': True,
-        }
+        return _format_price_result(live, crop_name, state, is_live=True)
 
-        if state and state in live['state_prices']:
-            result['state_price'] = live['state_prices'][state]
-            result['state'] = state
-        else:
-            result['state_price'] = live['national_avg']
-            result['state'] = 'National'
+    # 2. Try build-time cached data (fetched during Docker build)
+    build = _build_cache.get(crop_name)
+    if build:
+        return _format_price_result(build, crop_name, state, is_live=True)
 
-        result['trend'] = live['trend']
-        return result
-
-    # Fallback to static
+    # 3. Static fallback
     static = STATIC_PRICES.get(crop_name)
     if not static:
         return None
 
-    result = {
+    return {
         'crop': crop_name,
         'msp': MSP_DATA.get(crop_name),
         'national_avg': static['avg'],
@@ -276,11 +301,10 @@ def get_crop_price(crop_name, state=None):
         'unit': '₹/Quintal',
         'season': static['season'],
         'live': False,
+        'state_price': static['avg'],
+        'state': 'National',
+        'trend': 'stable',
     }
-    result['state_price'] = static['avg']
-    result['state'] = 'National'
-    result['trend'] = 'stable'
-    return result
 
 
 def get_prices_for_recommendations(crop_list, state=None):
