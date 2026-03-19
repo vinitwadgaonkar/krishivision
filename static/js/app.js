@@ -25,22 +25,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ═══ Soil Camera ═══
-    $('btnSoilCamera').addEventListener('click', () => { $('soilInput').click(); });
-    $('soilZone').addEventListener('click', () => { $('soilInput').click(); });
+    $('btnSoilCamera').addEventListener('click', e => { e.stopPropagation(); $('soilInput').click(); });
+    $('soilZone').addEventListener('click', e => {
+        if (e.target.closest('.btn')) return;
+        $('soilInput').click();
+    });
     $('soilInput').addEventListener('change', e => {
         if (e.target.files[0]) { soilFile = e.target.files[0]; showPreview('soil'); }
     });
-    $('btnSoilRetake').addEventListener('click', () => resetPreview('soil'));
-    $('btnSoilAnalyze').addEventListener('click', () => analyzeSoil());
+    $('btnSoilRetake').addEventListener('click', e => { e.stopPropagation(); resetPreview('soil'); });
+    $('btnSoilAnalyze').addEventListener('click', e => { e.stopPropagation(); analyzeSoil(); });
 
     // ═══ Leaf Camera ═══
-    $('btnLeafCamera').addEventListener('click', () => { $('leafInput').click(); });
-    $('leafZone').addEventListener('click', () => { $('leafInput').click(); });
+    $('btnLeafCamera').addEventListener('click', e => { e.stopPropagation(); $('leafInput').click(); });
+    $('leafZone').addEventListener('click', e => {
+        if (e.target.closest('.btn')) return;
+        $('leafInput').click();
+    });
     $('leafInput').addEventListener('change', e => {
         if (e.target.files[0]) { leafFile = e.target.files[0]; showPreview('leaf'); }
     });
-    $('btnLeafRetake').addEventListener('click', () => resetPreview('leaf'));
-    $('btnLeafAnalyze').addEventListener('click', () => analyzeLeaf());
+    $('btnLeafRetake').addEventListener('click', e => { e.stopPropagation(); resetPreview('leaf'); });
+    $('btnLeafAnalyze').addEventListener('click', e => { e.stopPropagation(); analyzeLeaf(); });
 
     // ═══ Manual Form ═══
     $('manualForm').addEventListener('submit', async e => {
