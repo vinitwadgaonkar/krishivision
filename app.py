@@ -120,6 +120,59 @@ def scan_leaf():
     })
 
 
+# ── Price Test (diagnostic) ─────────────────────────────────────
+@app.route('/api/price-test', methods=['GET'])
+def price_test():
+    """Test live price fetching — diagnostic endpoint."""
+    import subprocess, http.client, ssl
+    crop = request.args.get('crop', 'wheat')
+    results = {}
+
+    # Test 1: http.client
+    try:
+        ctx = ssl.create_default_context()
+        conn = http.client.HTTPSConnection('mandibhav.in', timeout=8, context=ctx)
+        conn.request('GET', f'/crop/{crop}', headers={
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
+            'Accept': 'text/html',
+        })
+        resp = conn.getresponse()
+        body = resp.read().decode('utf-8', errors='ignore')
+        conn.close()
+        results['http_client'] = {'status': resp.status, 'body_len': len(body), 'has_price': 'Average Price' in body}
+    except Exception as e:
+        results['http_client'] = {'error': str(e)}
+
+    # Test 2: curl
+    try:
+        proc = subprocess.run(
+            ['curl', '-sL', '--max-time', '8', f'https://mandibhav.in/crop/{crop}'],
+            capture_output=True, timeout=10,
+        )
+        body = proc.stdout.decode('utf-8', errors='ignore')
+        results['curl'] = {'returncode': proc.returncode, 'body_len': len(body), 'has_price': 'Average Price' in body}
+        if proc.stderr:
+            results['curl']['stderr'] = proc.stderr.decode('utf-8', errors='ignore')[:200]
+    except FileNotFoundError:
+        results['curl'] = {'error': 'curl not installed'}
+    except Exception as e:
+        results['curl'] = {'error': str(e)}
+
+    # Test 3: urllib
+    try:
+        import urllib.request
+        req = urllib.request.Request(f'https://mandibhav.in/crop/{crop}', headers={
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+        })
+        with urllib.request.urlopen(req, timeout=8) as r:
+            body = r.read().decode('utf-8', errors='ignore')
+            results['urllib'] = {'status': r.status, 'body_len': len(body), 'has_price': 'Average Price' in body}
+    except Exception as e:
+        results['urllib'] = {'error': f'{type(e).__name__}: {e}'}
+
+    return jsonify(results)
+
+
 # ── Auto-Context (GPS only) ─────────────────────────────────────
 @app.route('/api/context', methods=['GET'])
 def get_context():
