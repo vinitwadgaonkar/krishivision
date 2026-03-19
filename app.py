@@ -124,51 +124,59 @@ def scan_leaf():
 @app.route('/api/price-test', methods=['GET'])
 def price_test():
     """Test live price fetching — diagnostic endpoint."""
-    import subprocess, http.client, ssl
+    import http.client, ssl, json as _json
     crop = request.args.get('crop', 'wheat')
     results = {}
 
-    # Test 1: http.client
+    # Test __data.json endpoint (the one we actually use)
     try:
         ctx = ssl.create_default_context()
         conn = http.client.HTTPSConnection('mandibhav.in', timeout=8, context=ctx)
-        conn.request('GET', f'/crop/{crop}', headers={
+        conn.request('GET', f'/crop/{crop}/__data.json', headers={
             'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
-            'Accept': 'text/html',
+            'Accept': 'application/json',
+            'Connection': 'close',
         })
         resp = conn.getresponse()
         body = resp.read().decode('utf-8', errors='ignore')
         conn.close()
-        results['http_client'] = {'status': resp.status, 'body_len': len(body), 'has_price': 'Average Price' in body}
+        is_json = False
+        has_price = False
+        try:
+            parsed = _json.loads(body)
+            is_json = True
+            has_price = 'nodes' in parsed and len(parsed.get('nodes', [])) >= 2
+        except Exception:
+            pass
+        results['data_json'] = {
+            'status': resp.status,
+            'body_len': len(body),
+            'is_json': is_json,
+            'has_price_data': has_price,
+            'snippet': body[:200],
+        }
     except Exception as e:
-        results['http_client'] = {'error': str(e)}
+        results['data_json'] = {'error': str(e)}
 
-    # Test 2: curl
+    # Test HTML page (for comparison)
     try:
-        proc = subprocess.run(
-            ['curl', '-sL', '--max-time', '8', f'https://mandibhav.in/crop/{crop}'],
-            capture_output=True, timeout=10,
-        )
-        body = proc.stdout.decode('utf-8', errors='ignore')
-        results['curl'] = {'returncode': proc.returncode, 'body_len': len(body), 'has_price': 'Average Price' in body}
-        if proc.stderr:
-            results['curl']['stderr'] = proc.stderr.decode('utf-8', errors='ignore')[:200]
-    except FileNotFoundError:
-        results['curl'] = {'error': 'curl not installed'}
-    except Exception as e:
-        results['curl'] = {'error': str(e)}
-
-    # Test 3: urllib
-    try:
-        import urllib.request
-        req = urllib.request.Request(f'https://mandibhav.in/crop/{crop}', headers={
+        ctx2 = ssl.create_default_context()
+        conn2 = http.client.HTTPSConnection('mandibhav.in', timeout=8, context=ctx2)
+        conn2.request('GET', f'/crop/{crop}', headers={
             'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+            'Accept': 'text/html',
         })
-        with urllib.request.urlopen(req, timeout=8) as r:
-            body = r.read().decode('utf-8', errors='ignore')
-            results['urllib'] = {'status': r.status, 'body_len': len(body), 'has_price': 'Average Price' in body}
+        resp2 = conn2.getresponse()
+        body2 = resp2.read().decode('utf-8', errors='ignore')
+        conn2.close()
+        results['html_page'] = {'status': resp2.status, 'body_len': len(body2)}
     except Exception as e:
-        results['urllib'] = {'error': f'{type(e).__name__}: {e}'}
+        results['html_page'] = {'error': str(e)}
+
+    # Also test one live price fetch through our actual code
+    from market_prices import _fetch_live_price
+    live = _fetch_live_price('Wheat')
+    results['live_fetch_result'] = live if live else 'failed'
 
     return jsonify(results)
 
